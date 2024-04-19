@@ -2,6 +2,7 @@ import os
 import uuid
 from typing import Dict, List, Any
 from openai import OpenAI
+from enum import Enum
 
 from fastapi import FastAPI
 from dataclasses import dataclass, field
@@ -14,6 +15,12 @@ app = FastAPI()
 client = OpenAI(
     api_key=apiKey
 )
+
+
+class MachineStatus(Enum):
+    RED = "RED"
+    YELLOW = "YELLOW"
+    GREEN = "GREEN"
 
 
 def generate_response(messages: List[Dict[str, str]]) -> str:
@@ -57,6 +64,7 @@ class Session:
 @dataclass()
 class Machine:
     name: str
+    status: MachineStatus = MachineStatus.GREEN
 
 
 @dataclass
@@ -87,6 +95,17 @@ with open("prompt", "r") as f:
 @app.get("/")
 def test():
     return {"Hello": "World"}
+
+
+@app.post("/setMachineStatus")
+def setMachineStatus(session_id: str, status: str) -> dict[str, str]:
+    if session_id in Sessions:
+        session = Sessions[session_id]
+        if status not in MachineStatus.__members__:
+            return {"error": "Invalid status"}
+        session.machine.status = MachineStatus[status]
+        return {"message": "Status updated"}
+    return {"error": "Invalid Session ID"}
 
 
 @app.post("/createProblemSession")
@@ -136,7 +155,7 @@ def getMessages(session_id: str) -> dict[str, Session] | dict[str, str]:
 
 
 @app.get("/getSession")
-def getSession(session_id: str) -> dict[str, Session] | dict[str, str]:
+def getSession(session_id: str) -> Session:
     if session_id in Sessions:
         session = Sessions[session_id]
         return session
