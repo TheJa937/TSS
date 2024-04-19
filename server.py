@@ -1,11 +1,21 @@
 import uuid
 from typing import Dict, List, Any
+from openai import OpenAI
 
 from fastapi import FastAPI
 from dataclasses import dataclass, field
 
 app = FastAPI()
+client = OpenAI(
+    api_key = ""
+)
 
+def generate_response(messages: List[Dict[str, str]]) -> str:
+    completion = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=messages
+    )
+    return completion.choices[0].message
 
 @dataclass
 class Userport:
