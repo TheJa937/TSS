@@ -507,14 +507,23 @@ def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
 
 
 @app.post("/upload/")
-async def uploadfile(file: UploadFile):
-    try:
-        file_path = f"./UploadedFiles/{file.filename}"
-        with open(file_path, "wb") as f:
-            f.write(file.file.read())
+async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
+    if not authenticateUser(username, authMethod, arg):
+        return {"error": "Invalid credentials"}
+    sessionId = getUsersCurrentSession(username)
+    if sessionId in Sessions:
+        session = Sessions[sessionId]
+        try:
+            file_path = f"./UploadedFiles/{file.filename}"
+            with open(file_path, "wb") as f:
+                f.write(file.file.read())
+            session.files.append(file_path)
             return {"message": "File saved successfully"}
-    except Exception as e:
-        return {"message": e.args}
+        except Exception as e:
+            return {"message": e.args}
+    else:
+        return {"error": "user has no active Session"}
+
 
 if __name__ == "__main__":
     import uvicorn
