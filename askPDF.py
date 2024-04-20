@@ -131,7 +131,7 @@ class HandoutAssistant:
         relevant_segments.sort(key=lambda x: x["score"] if x["score"] is not None else float('-inf'), reverse=True)
         return relevant_segments
     
-    def process_pdf_and_get_answer(self, question):
+    def get_answer(self, question):
         if self.pdf_path != self.current_pdf_path:
             self.current_pdf_path = self.pdf_path
             self.questions_data = self.process_pdf(self.pdf_path)
