@@ -145,13 +145,11 @@ class HandoutAssistant:
                 relevant_segments.append({
                     "id": segment["id"],
                     "segment_text": segment["segmentText"],
-                    "score": doc.metadata.get("score", None),
                     "page_number": segment["page_number"]
                 })
                 # print the score and the element ID
-                print(f"Element ID: {segment['id']}, Score: {doc.metadata.get('score', None)}")
+                print(f"Element ID: {segment['id']}")
 
-        relevant_segments.sort(key=lambda x: x["score"] if x["score"] is not None else float('-inf'), reverse=True)
         print("most relevant segment: ", relevant_segments[0])
         return relevant_segments
 
