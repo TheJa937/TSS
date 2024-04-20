@@ -215,6 +215,7 @@ class Session:
     problem: "Problem"
     state: SessionState = SessionState.WaitingForServicetechnician
     messages: List[dict[str, str]] = field(default_factory=list)
+    files: List[str] = field(default_factory=list)
 
 
 @dataclass()
