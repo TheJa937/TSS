@@ -5,7 +5,7 @@ from openai import OpenAI
 from enum import Enum
 import fitz
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 import requests
@@ -462,6 +462,16 @@ def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
         return Sessions
     return {"error": "Invalid Admin Password"}
 
+
+@app.post("/upload/")
+async def uploadfile(file: UploadFile):
+    try:
+        file_path = f"./UploadedFiles/{file.filename}"
+        with open(file_path, "wb") as f:
+            f.write(file.file.read())
+            return {"message": "File saved successfully"}
+    except Exception as e:
+        return {"message": e.args}
 
 if __name__ == "__main__":
     import uvicorn
