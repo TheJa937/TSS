@@ -9,6 +9,8 @@ from fastapi import FastAPI, UploadFile, File
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 import requests
+import langchain
+from langchain.docstore.document import Document
 
 
 load_dotenv("./env.env")
@@ -104,6 +106,15 @@ class HandoutAssistant:
             segment["page_number"] = max_overlap_page_number + 1
             print(f"Element ID: {segment['id']}, Page Number: {segment['page_number']}")
         return segmented_text
+    
+    def build_faiss_index(self, questions_data):
+        # Convert questions_data to a list of Documents
+        documents = [Document(page_content=q_data["segmentText"], metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in questions_data]
+
+        # Create the FAISS index (vector store) using the langchain.FAISS.from_documents() method
+        vector_store = langchain.FAISS.from_documents(documents, self.embedder)
+
+        return vector_store
 
 def generate_response(messages: List[Dict[str, str]]) -> str:
     """
@@ -455,6 +466,11 @@ def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str
         return session
     return {"error": "Invalid session id"}
 
+@app.post("/askPDF")
+def askPDF(questionData: str) -> str :
+    pdf_path = "UploadedFiles/TRUMPF_TruBend_Brochure.pdf"
+    handout_assistant = HandoutAssistant()
+
 
 @app.get("/allActiveSessions")
 def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
@@ -476,5 +492,4 @@ async def uploadfile(file: UploadFile):
 if __name__ == "__main__":
     import uvicorn
 
-    pdf_path = "TRUMPF_TruBend_Brochure.pdf"
     uvicorn.run(app, host="localhost", port=8000)
