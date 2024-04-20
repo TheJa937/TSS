@@ -21,6 +21,7 @@ with open("prompt", "r") as f:
 
 ADMIN_PASSWORD = "apfel"
 
+
 class MachineStatus(Enum):
     RED = "RED"
     YELLOW = "YELLOW"
@@ -127,7 +128,6 @@ class Machine:
 class Problem:
     name: str
     description: str
-
 
 
 Sessions = {}
@@ -378,8 +378,9 @@ def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str
         return session
     return {"error": "Invalid session id"}
 
+
 @app.get("/allActiveSessions")
-def getCurrentSession(adminPassword: str) -> dict[str, Session] | dict[str, str]:
+def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
     if adminPassword == ADMIN_PASSWORD:
         return Sessions
     return {"error": "Invalid Admin Password"}
