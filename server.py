@@ -292,7 +292,7 @@ class Specials(Enum):
 @dataclass
 class Response:
     message: str
-    specials: {str: str}
+    specials: dict[str, str]
 
 
 def listSessionStates(context, _) -> list[Response]:
