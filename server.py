@@ -3,17 +3,21 @@ import uuid
 from typing import Dict, List, Any, Callable
 from openai import OpenAI
 from enum import Enum
+import fitz
 
 from fastapi import FastAPI
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
+import requests
+
 
 load_dotenv("./env.env")
 
-apiKey = os.getenv("OPENAI_API_KEY")
+ai21_apiKey = os.getenv("AI21_API_KEY")
+openai_apiKey = os.getenv("OPENAI_API_KEY")
 app = FastAPI()
 client = OpenAI(
-    api_key=apiKey
+    api_key=openai_apiKey
 )
 
 with open("prompt", "r") as f:
@@ -26,6 +30,79 @@ class MachineStatus(Enum):
     YELLOW = "YELLOW"
     GREEN = "GREEN"
 
+
+class PDFReader:
+    @staticmethod
+    def pdfToText(pdf_path: str):
+        doc = fitz.open(pdf_path)
+        text = ""
+        page_texts = []
+        for page in doc:
+            page_text = page.get_text("text")
+            text += page_text
+            page_texts.append({"text": page_text, "page_number": page.number})
+        return text, page_texts
+    
+    @staticmethod
+    def highlight_text(input_pdf, output_pdf, text_to_highlight):
+        phrases = text_to_highlight.split('\n')
+        with fitz.open(input_pdf) as doc:
+            for page in doc:
+                for phrase in phrases:
+                    areas = page.search_for(phrase)
+                    if areas:
+                        for area in areas:
+                            highlight = page.add_highlight_annot(area)
+                            highlight.update()
+            doc.save(output_pdf)
+    
+class AI21PDFHandler:
+    @staticmethod
+    def segment_text(text):
+        url = "https://api.ai21.com/studio/v1/summarize-by-segment"
+        payload = {
+            "sourceType": "TEXT",
+            "source": text
+        }
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "Authorization": f"Bearer {os.environ[ai21_apiKey]}"
+        }
+        response = requests.post(url, json=payload, headers=headers)
+
+        if response.status_code == 200:
+            json_response = response.json()
+            return json_response.get("segments")
+        else:
+            print(f"An error occurred: {response.status_code}")
+            return None
+
+class HandoutAssistant:
+    def __init__(self) -> None:
+        self.current_pdf_path = None
+        self.question_data = None
+
+    def process_pdf(self, pdf_path):
+        text, page_texts = PDFReader.pdfToText(pdf_path)
+        segmented_text = AI21PDFHandler.segment_text(text)
+        question_data = self.assign_page_numbers_to_pages(segmented_text, page_texts)
+        return question_data
+    
+    def assign_page_numbers_to_pages(self, segmented_text, page_texts):
+        for idx, segment in enumerate(segmented_text):
+            segment_text = segment["segmentText"]
+            segment["id"] = idx + 1
+            max_overlap = 0
+            max_overlap_page_number = None
+            for page_text in page_texts:
+                overlap = len(set(segment_text.split()).intersection(set(page_text["text"].split())))
+                if overlap > max_overlap:
+                    max_overlap = overlap
+                    max_overlap_page_number = page_text["page_number"]
+            segment["page_number"] = max_overlap_page_number + 1
+            print(f"Element ID: {segment['id']}, Page Number: {segment['page_number']}")
+        return segmented_text
 
 def generate_response(messages: List[Dict[str, str]]) -> str:
     """
