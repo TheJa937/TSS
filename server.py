@@ -237,7 +237,7 @@ def listSessionStates(context, _) -> list[Response]:
     i = 1
     for session in Sessions.values():
         if session.username == context["user"].name:
-            response = Response(f"{session.machine.name}: {session.state}", {Specials.Button: f"Switch to {i}"})
+            response = Response(f"{session.machine.name}: {session.state}", {Specials.Button: True})
             responses.append(response)
             i += 1
     return responses

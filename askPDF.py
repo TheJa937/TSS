@@ -1,15 +1,25 @@
 import re
+
+import dotenv
 import fitz
+import langchain_community
 import requests
 import langchain
 from langchain.docstore.document import Document
-from enum import Enum
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores.faiss import FAISS
 import os
+
+from langchain_core import vectorstores
 from openai import OpenAI
 import openai
+import pickle
 
+dotenv.load_dotenv("env.env")
 ai21_apiKey = os.getenv("AI21_API_KEY")
 openai_apiKey = os.getenv("OPENAI_API_KEY")
+print(ai21_apiKey)
+
 
 class PDFReader:
     @staticmethod
@@ -22,7 +32,7 @@ class PDFReader:
             text += page_text
             page_texts.append({"text": page_text, "page_number": page.number})
         return text, page_texts
-    
+
     @staticmethod
     def highlight_text(input_pdf, output_pdf, text_to_highlight):
         phrases = text_to_highlight.split('\n')
@@ -35,7 +45,8 @@ class PDFReader:
                             highlight = page.add_highlight_annot(area)
                             highlight.update()
             doc.save(output_pdf)
-    
+
+
 class AI21PDFHandler:
     @staticmethod
     def segment_text(text):
@@ -47,8 +58,9 @@ class AI21PDFHandler:
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "Authorization": f"Bearer {os.environ[ai21_apiKey]}"
+            "Authorization": f"Bearer {ai21_apiKey}"
         }
+
         response = requests.post(url, json=payload, headers=headers)
 
         if response.status_code == 200:
@@ -58,38 +70,39 @@ class AI21PDFHandler:
             print(f"An error occurred: {response.status_code}")
             return None
 
-class OpenAIAPI:
-    def __init__(self):
-        api_key=openai_apiKey
 
-    def get_answer_and_id(self, prompt):
-        response = openai.chat.completions.create(
-            engine="gpt-3.5-turbo",
-            prompt=prompt
-        )
-        
-        answer_text = response.choices[0].text.strip()
-        lines = response.choices[0].text.strip().split('\n')
-        answer = lines[0].strip()
-        try:
-            segment_id = int(re.search(r'<ID: (\d+)>', answer).group(1))
-            answer = re.sub(r'<ID: \d+>', '', answer).strip()
-        except AttributeError:
-            segment_id = None
-        return answer, segment_id
+def get_answer_and_id(prompt):
+    response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "system", "content": prompt}]
+    )
+
+    answer_text = response.choices[0].message.content.strip()
+    lines = response.choices[0].message.content.strip().split('\n')
+    answer = lines[0].strip()
+    try:
+        segment_id = int(re.search(r'<ID: (\d+)>', answer).group(1))
+        answer = re.sub(r'<ID: \d+>', '', answer).strip()
+    except AttributeError:
+        segment_id = None
+    return answer, segment_id
+
 
 class HandoutAssistant:
     def __init__(self) -> None:
         self.current_pdf_path = None
         self.question_data = None
-        self.pdf_path = "UploadedFiles/TRUMPF_TruBend_Brochure.pdf"
-
+        self.pdf_path = "./TruLaser-2030-Pre-Install-Manual.pdf"
+        self.embedder = OpenAIEmbeddings()
+        self.pdf_name = "".join([s for s in self.pdf_path if s.isalnum()])
     def process_pdf(self):
         text, page_texts = PDFReader.pdfToText(self.pdf_path)
+        text = text[:500]
         segmented_text = AI21PDFHandler.segment_text(text)
+        print(segmented_text)
         question_data = self.assign_page_numbers_to_pages(segmented_text, page_texts)
         return question_data
-    
+
     def assign_page_numbers_to_pages(self, segmented_text, page_texts):
         for idx, segment in enumerate(segmented_text):
             segment_text = segment["segmentText"]
@@ -106,10 +119,12 @@ class HandoutAssistant:
         return segmented_text
 
     def build_faiss_index(self, questions_data):
-        documents = [Document(page_content=q_data["segmentText"], metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in questions_data]
-        vector_store = langchain.FAISS.from_documents(documents, self.embedder)
+        documents = [Document(page_content=q_data["segmentText"],
+                              metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in
+                     questions_data]
+        vector_store = FAISS.from_documents(documents, self.embedder)
         return vector_store
-    
+
     def get_relevant_segments(self, questions_data, user_question, faiss_index):
         retriever = faiss_index.as_retriever()
         retriever.search_kwargs = {"k": 5}
@@ -130,33 +145,55 @@ class HandoutAssistant:
 
         relevant_segments.sort(key=lambda x: x["score"] if x["score"] is not None else float('-inf'), reverse=True)
         return relevant_segments
-    
+
+    def generate_prompt(self, question, relevant_segments):
+        prompt = f"""
+        You are an AI Q&A bot. You will be given a question and a list of relevant text segments with their IDs. Please provide an accurate and concise answer based on the information provided, or indicate if you cannot answer the question with the given information. Also, please include the ID of the segment that helped you the most in your answer by writing <ID: > followed by the ID number.
+
+        Question: {question}
+
+        Relevant Segments:"""
+#       print("\n\n")
+        for segment in relevant_segments:
+            prompt += f'\n{segment["id"]}. "{segment["segment_text"]}"'
+
+#       print(f"Relevant Element ID: {segment['id']}")  # Add this line to print the relevant element IDs
+        return prompt
+
     def get_answer(self, question):
-        if self.pdf_path != self.current_pdf_path:
-            self.current_pdf_path = self.pdf_path
-            self.questions_data = self.process_pdf(self.pdf_path)
-
+#       self.current_pdf_path = self.pdf_path
+        self.questions_data = self.process_pdf()
+        if os.path.exists("faiis" + self.pdf_name):
+            local_index = FAISS.load_local("faiis" + self.pdf_name, self.embedder, allow_dangerous_deserialization=True)
+            self.faiss_index = local_index
+        else:
             # Build the FAISS index (vector store)
+            print("INDEXING NEW FILE")
             self.faiss_index = self.build_faiss_index(self.questions_data)
-
+            self.faiss_index.save_local(folder_path="faiis" + self.pdf_name)
         # Use the retriever to search for the most relevant segments
         relevant_segments = self.get_relevant_segments(self.questions_data, question, self.faiss_index)
 
         if not relevant_segments:
             return "I couldn't find enough relevant information to answer your question.", None, None, None
 
-            
-
         prompt = self.generate_prompt(question, relevant_segments)
-        answer, segment_id = self.openai_api.get_answer_and_id(prompt)
+        answer, segment_id = get_answer_and_id(prompt)
 
         if segment_id is not None:
             segment_data = next((seg for seg in relevant_segments if seg["id"] == segment_id), None)
             segment_text = segment_data["segment_text"] if segment_data else None
-            page_number = next((segment["page_number"] for segment in self.questions_data if segment["id"] == segment_id), None)
+            page_number = next(
+                (segment["page_number"] for segment in self.questions_data if segment["id"] == segment_id), None)
         else:
             page_number = None
             segment_text = None
 
-
         return answer, segment_id, segment_text, page_number
+
+
+if __name__ == "__main__":
+    ha = HandoutAssistant()
+    print("HI")
+    while True:
+        print(ha.get_answer(input()))
