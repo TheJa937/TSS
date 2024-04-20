@@ -188,7 +188,7 @@ class HandoutAssistant:
             page_number = None
             segment_text = None
 
-        return answer, segment_id, segment_text, page_number
+        return answer, page_number, segment_text, segment_id
 
 
 ha = HandoutAssistant()

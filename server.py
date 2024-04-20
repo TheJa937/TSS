@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import askPDF
+from fastapi.responses import FileResponse
 
 load_dotenv("./env.env")
 
@@ -311,6 +312,10 @@ def createSession(context, arg) -> list[Response]:
     user: User = context["user"]
     Sessions[session_id] = Session(user.name, session_id, Machines[machine], Problem(problemTitle, problem))
     Sessions[session_id].messages.append({"role": "system", "content": prompt})
+    Sessions[session_id].messages.append(
+        {"role": "user", "content": f"Registered this problem: {problemTitle}\n{problem}"})
+    Sessions[session_id].messages.append(
+        {"role": "assistant", "content": "I created a new problem Session for you. Do you need further help?"})
 
     user.currentSessionId = session_id
     return [Response(f"I created a new problem Session for you. Do you need further help?", {})]
@@ -483,8 +488,10 @@ async def sendMessage(username: str, message: str, authMethod: str, arg: str) ->
         session = Sessions[sessionId]
         session.messages.append({"role": "user", "content": message})
         context = {"user": Users[0], "session": session}
-        response = parseAiFunction(await generate_response(session.messages), context)
-        return {"message": response}
+        responses = parseAiFunction(await generate_response(session.messages), context)
+        for response in responses:
+            session.messages.append({"role": "assistant", "content": response.message})
+        return {"message": responses}
     return {"error": "Invalid session id"}
 
 
@@ -546,6 +553,7 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
             session.files.append(file_path)
+            session.messages.append({"role": "user", "content": f"<img>{file.filename}"})
         except Exception as e:
             return {"message": [Response(str(e), {})]}
         finally:
@@ -554,6 +562,11 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
     else:
         file.file.close()
         return {"message": [Response("user has no active Session", {})]}
+
+
+@app.get("/image")
+async def getImage(image: str):
+    return FileResponse(image)
 
 
 if __name__ == "__main__":
