@@ -105,13 +105,13 @@ class Session:
     Represents a session. So a problem of a user on a certain machine
 
     Attributes:
-        user (User): User associated with the session.
+        username (User): User associated with the session.
         id (str): Session ID.
         machine (Machine): Machine associated with the session.
         problem (Problem): Problem associated with the session.
         messages (List[dict[str, str]]): List of messages in the session.
     """
-    user: User
+    username: str
     id: str
     machine: "Machine"
     problem: "Problem"
@@ -360,7 +360,7 @@ def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dic
 
 
 @app.get("/getCurrentSession")
-def getCurrentSession(username: str, authMethod: str, arg) -> Session:
+def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str, str]:
     """
     Get current session.
 
@@ -379,7 +379,7 @@ def getCurrentSession(username: str, authMethod: str, arg) -> Session:
     return {"error": "Invalid session id"}
 
 @app.get("/allActiveSessions")
-def getCurrentSession(adminPassword: str) -> List[Session]:
+def getCurrentSession(adminPassword: str) -> List[Session] | dict[str, str]:
     if adminPassword == ADMIN_PASSWORD:
         return Sessions.values
     return {"error": "Invalid Admin Password"}
