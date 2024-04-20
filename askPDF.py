@@ -1,3 +1,4 @@
+import re
 import fitz
 import requests
 import langchain
@@ -66,14 +67,25 @@ class OpenAIAPI:
             engine="gpt-3.5-turbo",
             prompt=prompt
         )
+        
+        answer_text = response.choices[0].text.strip()
+        lines = response.choices[0].text.strip().split('\n')
+        answer = lines[0].strip()
+        try:
+            segment_id = int(re.search(r'<ID: (\d+)>', answer).group(1))
+            answer = re.sub(r'<ID: \d+>', '', answer).strip()
+        except AttributeError:
+            segment_id = None
+        return answer, segment_id
 
 class HandoutAssistant:
     def __init__(self) -> None:
         self.current_pdf_path = None
         self.question_data = None
+        self.pdf_path = "TRUMPF_TruBend_Brochure.pdf"
 
-    def process_pdf(self, pdf_path):
-        text, page_texts = PDFReader.pdfToText(pdf_path)
+    def process_pdf(self):
+        text, page_texts = PDFReader.pdfToText(self.pdf_path)
         segmented_text = AI21PDFHandler.segment_text(text)
         question_data = self.assign_page_numbers_to_pages(segmented_text, page_texts)
         return question_data
