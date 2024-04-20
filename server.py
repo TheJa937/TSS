@@ -562,10 +562,13 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
             session.files.append(file_path)
-            return {"message": "File saved successfully"}
         except Exception as e:
             return {"message": e.args}
+        finally:
+            file.file.close()
+            return {"message": "File saved successfully"}
     else:
+        file.file.close()
         return {"error": "user has no active Session"}
 
 
