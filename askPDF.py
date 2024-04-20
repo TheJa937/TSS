@@ -5,13 +5,10 @@ from langchain.docstore.document import Document
 from enum import Enum
 import os
 from openai import OpenAI
+import openai
 
 ai21_apiKey = os.getenv("AI21_API_KEY")
 openai_apiKey = os.getenv("OPENAI_API_KEY")
-
-client = OpenAI(
-    api_key=openai_apiKey
-)
 
 class PDFReader:
     @staticmethod
@@ -59,6 +56,16 @@ class AI21PDFHandler:
         else:
             print(f"An error occurred: {response.status_code}")
             return None
+
+class OpenAIAPI:
+    def __init__(self):
+        api_key=openai_apiKey
+
+    def get_answer_and_id(self, prompt):
+        response = openai.chat.completions.create(
+            engine="gpt-3.5-turbo",
+            prompt=prompt
+        )
 
 class HandoutAssistant:
     def __init__(self) -> None:
