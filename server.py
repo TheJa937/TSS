@@ -1,6 +1,6 @@
 import os
 import uuid
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Callable
 from openai import OpenAI
 from enum import Enum
 
@@ -53,7 +53,7 @@ class Userport:
         authentication (Function): Authentication function for the port.
     """
     name: str
-    authentication: "Function"
+    authentication: Callable
 
 
 @dataclass
@@ -116,6 +116,18 @@ class Session:
     problem: "Problem"
     messages: List[dict[str, str]] = field(default_factory=list)
 
+@dataclass()
+class Machine:
+    name: str
+    status: MachineStatus = MachineStatus.GREEN
+
+
+@dataclass
+class Problem:
+    name: str
+    description: str
+
+
 
 Sessions = {}
 closedSessions = {}
@@ -142,6 +154,24 @@ def getUsersCurrentSession(username: str):
     return None
 
 
+def authenticateUser(username: str, method: str, arg: Any):
+    """
+    Authenticate the user.
+
+    Args:
+        username (str): Username.
+        method (str): Authentication method.
+        arg (Any): Argument for authentication.
+
+    Returns:
+        bool: True if authentication is successful, False otherwise.
+    """
+    for user in Users:
+        if user.name == username:
+            return user.authenticate(method, arg)
+    return False
+
+
 @dataclass
 class AiFunction:
     """
@@ -152,7 +182,7 @@ class AiFunction:
         function (Function): Function associated with the AI function.
     """
     name: str
-    function: "Function"
+    function: Callable
 
 
 aiFunctions = []
@@ -169,6 +199,8 @@ def listSessionStates(_):
         dict[str, str]: Session states.
     """
     return {session.machine.name: session.machine.status.name for session in Sessions.values()}
+
+
 aiFunctions.append(AiFunction("listSessionStates", listSessionStates))
 
 
@@ -285,7 +317,7 @@ def closeSession(session_id: str) -> dict[str, str]:
 
 
 @app.post("/sendMessage")
-def sendMessage(username: str, message: str) -> dict[str, str] | dict[str, dict]:
+def sendMessage(username: str, message: str, authMethod: str, arg) -> dict[str, str] | dict[str, dict]:
     """
     Send a message.
 
@@ -296,6 +328,8 @@ def sendMessage(username: str, message: str) -> dict[str, str] | dict[str, dict]
     Returns:
         dict[str, str] | dict[str, dict]: Response message or AI generated response.
     """
+    if not authenticateUser(username, authMethod, arg):
+        return {"error": "Invalid credentials"}
     sessionId = getUsersCurrentSession(username)
     if sessionId in Sessions:
         session = Sessions[sessionId]
@@ -306,7 +340,7 @@ def sendMessage(username: str, message: str) -> dict[str, str] | dict[str, dict]
 
 
 @app.get("/getMessages")
-def getMessages(username: str) -> dict[str, Session] | dict[str, str]:
+def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dict[str, str]:
     """
     Get messages.
 
@@ -316,6 +350,8 @@ def getMessages(username: str) -> dict[str, Session] | dict[str, str]:
     Returns:
         dict[str, Session] | dict[str, str]: Messages or error message.
     """
+    if not authenticateUser(username, authMethod, arg):
+        return {"error": "Invalid credentials"}
     session_id = getUsersCurrentSession(username)
     if session_id in Sessions:
         return {"messages": Sessions[session_id].messages}
@@ -323,7 +359,7 @@ def getMessages(username: str) -> dict[str, Session] | dict[str, str]:
 
 
 @app.get("/getCurrentSession")
-def getCurrentSession(username: str) -> Session:
+def getCurrentSession(username: str, authMethod: str, arg) -> Session:
     """
     Get current session.
 
@@ -333,6 +369,8 @@ def getCurrentSession(username: str) -> Session:
     Returns:
         Session: Current session.
     """
+    if not authenticateUser(username, authMethod, arg):
+        return {"error": "Invalid credentials"}
     session_id = getUsersCurrentSession(username)
     if session_id in Sessions:
         session = Sessions[session_id]
