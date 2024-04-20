@@ -130,3 +130,33 @@ class HandoutAssistant:
 
         relevant_segments.sort(key=lambda x: x["score"] if x["score"] is not None else float('-inf'), reverse=True)
         return relevant_segments
+    
+    def process_pdf_and_get_answer(self, question):
+        if self.pdf_path != self.current_pdf_path:
+            self.current_pdf_path = self.pdf_path
+            self.questions_data = self.process_pdf(self.pdf_path)
+
+            # Build the FAISS index (vector store)
+            self.faiss_index = self.build_faiss_index(self.questions_data)
+
+        # Use the retriever to search for the most relevant segments
+        relevant_segments = self.get_relevant_segments(self.questions_data, question, self.faiss_index)
+
+        if not relevant_segments:
+            return "I couldn't find enough relevant information to answer your question.", None, None, None
+
+            
+
+        prompt = self.generate_prompt(question, relevant_segments)
+        answer, segment_id = self.openai_api.get_answer_and_id(prompt)
+
+        if segment_id is not None:
+            segment_data = next((seg for seg in relevant_segments if seg["id"] == segment_id), None)
+            segment_text = segment_data["segment_text"] if segment_data else None
+            page_number = next((segment["page_number"] for segment in self.questions_data if segment["id"] == segment_id), None)
+        else:
+            page_number = None
+            segment_text = None
+
+
+        return answer, segment_id, segment_text, page_number
