@@ -82,7 +82,7 @@ class HandoutAssistant:
     def __init__(self) -> None:
         self.current_pdf_path = None
         self.question_data = None
-        self.pdf_path = "TRUMPF_TruBend_Brochure.pdf"
+        self.pdf_path = "UploadedFiles/TRUMPF_TruBend_Brochure.pdf"
 
     def process_pdf(self):
         text, page_texts = PDFReader.pdfToText(self.pdf_path)
