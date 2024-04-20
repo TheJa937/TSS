@@ -77,12 +77,10 @@ def get_answer_and_id(prompt):
         messages=[{"role": "system", "content": prompt}]
     )
 
-    answer_text = response.choices[0].message.content.strip()
-    lines = response.choices[0].message.content.strip().split('\n')
-    answer = lines[0].strip()
+    answer = response.choices[0].message.content.strip()
     try:
-        segment_id = int(re.search(r'<ID: (\d+)>', answer).group(1))
-        answer = re.sub(r'<ID: \d+>', '', answer).strip()
+        segment_id = int(re.search(r'\(ID: (\d+)\)', answer).group(1))
+        answer = re.sub(r'\(ID: \d+\)', '', answer).strip()
     except AttributeError:
         segment_id = None
     return answer, segment_id
@@ -98,7 +96,7 @@ class HandoutAssistant:
 
     def process_pdf(self):
         text, page_texts = PDFReader.pdfToText(self.pdf_path)
-        text = text[:500]
+        text = text[:40_000]
         segmented_text = AI21PDFHandler.segment_text(text)
         print(segmented_text)
         question_data = self.assign_page_numbers_to_pages(segmented_text, page_texts)
@@ -148,12 +146,14 @@ class HandoutAssistant:
         return relevant_segments
 
     def generate_prompt(self, question, relevant_segments):
-        prompt = f"""
-        You are an AI Q&A bot. You will be given a question and a list of relevant text segments with their IDs. Please provide an accurate and concise answer based on the information provided, or indicate if you cannot answer the question with the given information. Also, please include the ID of the segment that helped you the most in your answer by writing <ID: > followed by the ID number.
+        with open("promptAsk", "r") as f:
+            prompt = f.read()
+        prompt += f"""
+        ###Question: 
+        {question}
 
-        Question: {question}
-
-        Relevant Segments:"""
+        ###Relevant Segments:
+        """
         #       print("\n\n")
         for segment in relevant_segments:
             prompt += f'\n{segment["id"]}. "{segment["segment_text"]}"'
@@ -197,6 +197,7 @@ ha = HandoutAssistant()
 
 
 def askQuestion(question: str) -> str:
+    print(question)
     return ha.get_answer(question)
 
 

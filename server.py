@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import askPDF
 
-
 load_dotenv("./env.env")
 
 openai_apiKey = os.getenv("OPENAI_API_KEY")
@@ -32,10 +31,12 @@ with open("prompt", "r") as f:
 
 ADMIN_PASSWORD = "apfel"
 
+
 class MachineStatus(Enum):
     RED = "RED"
     YELLOW = "YELLOW"
     GREEN = "GREEN"
+
 
 async def generate_response(messages: List[Dict[str, str]]) -> str:
     """
@@ -90,7 +91,9 @@ class User:
         Add phone port for the user.
         """
         self.Userports.append(Userport("Phone", lambda number: self.phoneNumber == number))
-        Users.append(self)
+
+    def addTestPort(self):
+        self.Userports.append(Userport("Test", lambda number: True))
 
     def authenticate(self, method, arg):
         """
@@ -154,6 +157,7 @@ class Problem:
     name: str
     description: str
 
+
 NAME = "Henrik"
 NUMBER = "4916095848582"
 Sessions = {}
@@ -161,6 +165,7 @@ closedSessions = {}
 Machines = {"machine1": Machine("machine1"), "machine2": Machine("machine2"), "machine3": Machine("machine3")}
 Users = [User(NAME, NUMBER, "Henrik@johnsmail")]
 Users[0].addPhonePort()
+Users[0].addTestPort()
 
 
 def getUsersCurrentSession(username: str):
@@ -215,6 +220,7 @@ aiFunctions = []
 
 class Specials(Enum):
     Button = "Button"
+    Source = "Source"
 
 
 @dataclass
@@ -243,12 +249,26 @@ def listSessionStates(context, _) -> list[Response]:
     return responses
 
 
-def parsePDF(_, question) -> str:
-    return askPDF.askQuestion(question)
+def parsePDF(_, question) -> list[Response]:
+    responses = []
+    print("HERE:")
+    a = askPDF.askQuestion(question)
+    for i in range(0, len(a), 2):
+        text = a[i]
+        source = a[i+1]
+        if text is None:
+            continue
+        if source is None:
+            responses.append(Response(text, {}))
+            continue
+        else:
+            responses.append(Response(text, {Specials.Source: source}))
+    return responses
 
 
 aiFunctions.append(AiFunction("listSessionStates", listSessionStates))
 aiFunctions.append(AiFunction("parsePDF", parsePDF))
+
 
 def parseAiFunction(call: str, context):
     """
@@ -426,6 +446,7 @@ async def getCurrentSession(username: str, authMethod: str, arg) -> Session | di
         return session
     return {"error": "Invalid session id"}
 
+
 @app.get("/allActiveSessions")
 def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
     if adminPassword == ADMIN_PASSWORD:
@@ -436,7 +457,7 @@ def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
 @app.post("/upload/")
 async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
     if not authenticateUser(username, authMethod, arg):
-        return {"error": "Invalid credentials"}
+        return [Response("Invalid credentials", {})]
     sessionId = getUsersCurrentSession(username)
     if sessionId in Sessions:
         session = Sessions[sessionId]
@@ -446,13 +467,13 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
                 f.write(file.file.read())
             session.files.append(file_path)
         except Exception as e:
-            return {"message": e.args}
+            return [Response(str(e), {})]
         finally:
             file.file.close()
-            return {"message": "File saved successfully"}
+            return [Response("File saved successfully", {})]
     else:
         file.file.close()
-        return {"error": "user has no active Session"}
+        return [Response("user has no active Session", {})]
 
 
 if __name__ == "__main__":
