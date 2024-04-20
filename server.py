@@ -7,6 +7,7 @@ from enum import Enum
 from fastapi import FastAPI, UploadFile, File
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
+from starlette.middleware.cors import CORSMiddleware
 
 
 
@@ -18,11 +19,18 @@ client = OpenAI(
     api_key=openai_apiKey
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins="*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 with open("prompt", "r") as f:
     prompt = f.read()
 
 ADMIN_PASSWORD = "apfel"
-
 
 class MachineStatus(Enum):
     RED = "RED"
@@ -30,6 +38,9 @@ class MachineStatus(Enum):
     GREEN = "GREEN"
 
 def generate_response(messages: List[Dict[str, str]]) -> str:
+
+
+async def generate_response(messages: List[Dict[str, str]]) -> str:
     """
     Generate AI response based on the conversation history.
 
@@ -146,13 +157,13 @@ class Problem:
     name: str
     description: str
 
-
+NAME = "Henrik"
+NUMBER = "4916095848582"
 Sessions = {}
 closedSessions = {}
 Machines = {"machine1": Machine("machine1"), "machine2": Machine("machine2"), "machine3": Machine("machine3")}
-Users = [User("John", "1234567890", "john@johnsmail")]
+Users = [User(NAME, NUMBER, "Henrik@johnsmail")]
 Users[0].addPhonePort()
-
 
 
 def getUsersCurrentSession(username: str):
@@ -207,6 +218,8 @@ aiFunctions = []
 
 class Specials(Enum):
     Button = "Button"
+
+
 @dataclass
 class Response:
     message: str
@@ -247,7 +260,7 @@ def parseAiFunction(call: str, context):
         Any: Result of the AI function call.
     """
     if len(call.split("(")) != 2:
-        return call
+        return [Response(call, {})]
     functionName, arg = call.split("(")
     arg = arg[:-1]
     for function in aiFunctions:
@@ -256,7 +269,7 @@ def parseAiFunction(call: str, context):
 
 
 @app.get("/")
-def test():
+async def test():
     """
     Test API endpoint.
     """
@@ -264,7 +277,7 @@ def test():
 
 
 @app.post("/setMachineStatus")
-def setMachineStatus(session_id: str, status: str) -> dict[str, str]:
+async def setMachineStatus(session_id: str, status: str) -> dict[str, str]:
     """
     Set machine status.
 
@@ -285,7 +298,8 @@ def setMachineStatus(session_id: str, status: str) -> dict[str, str]:
 
 
 @app.post("/createProblemSession")
-def createProblemSession(username: str, problem: "Problem", machineName: str, authMethod: str, arg) -> dict[str, str]:
+async def createProblemSession(username: str, problem: "Problem", machineName: str, authMethod: str, arg) -> dict[
+    str, str]:
     """
     Create a problem session.
 
@@ -311,7 +325,7 @@ def createProblemSession(username: str, problem: "Problem", machineName: str, au
 
 
 @app.get("/getUserSessions")
-def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list[Session]] | dict[str, str]:
+async def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list[Session]] | dict[str, str]:
     """
     Get user sessions.
 
@@ -333,7 +347,7 @@ def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list[Sessi
 
 
 @app.post("/closeSession")
-def closeSession(session_id: str) -> dict[str, str]:
+async def closeSession(session_id: str) -> dict[str, str]:
     """
     Close a session.
 
@@ -350,7 +364,7 @@ def closeSession(session_id: str) -> dict[str, str]:
 
 
 @app.post("/sendMessage")
-def sendMessage(username: str, message: str, authMethod: str, arg: str) -> dict[str, str] | dict[str, list[Any]]:
+async def sendMessage(username: str, message: str, authMethod: str, arg: str) -> dict[str, str] | dict[str, list[Any]]:
     """
     Send a message.
 
@@ -368,13 +382,13 @@ def sendMessage(username: str, message: str, authMethod: str, arg: str) -> dict[
         session = Sessions[sessionId]
         session.messages.append({"role": "user", "content": message})
         context = {"user": Users[0]}
-        response = parseAiFunction(generate_response(session.messages), context)
+        response = parseAiFunction(await generate_response(session.messages), context)
         return {"message": response}
     return {"error": "Invalid session id"}
 
 
 @app.get("/getMessages")
-def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dict[str, str]:
+async def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dict[str, str]:
     """
     Get messages.
 
@@ -393,7 +407,7 @@ def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dic
 
 
 @app.get("/getCurrentSession")
-def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str, str]:
+async def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str, str]:
     """
     Get current session.
 
@@ -410,12 +424,6 @@ def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str
         session = Sessions[session_id]
         return session
     return {"error": "Invalid session id"}
-
-@app.post("/askPDF")
-def askPDF(questionData: str) -> str :
-    pdf_path = "UploadedFiles/TRUMPF_TruBend_Brochure.pdf"
-    handout_assistant = HandoutAssistant()
-
 
 @app.get("/allActiveSessions")
 def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
@@ -436,22 +444,25 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
             session.files.append(file_path)
-            return {"message": "File saved successfully"}
         except Exception as e:
             return {"message": e.args}
+        finally:
+            file.file.close()
+            return {"message": "File saved successfully"}
     else:
+        file.file.close()
         return {"error": "user has no active Session"}
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    Sessions["1"] = Session("John", "1", Machines["machine1"], Problem("Problem1", "This is a problem"))
+    Sessions["1"] = Session(NAME, "1", Machines["machine1"], Problem("Problem1", "This is a problem"))
     Sessions["1"].messages.append({"role": "system", "content": prompt})
-    Sessions["2"] = Session("John", "2", Machines["machine2"], Problem("Problem2", "This is another problem"))
+    Sessions["2"] = Session(NAME, "2", Machines["machine2"], Problem("Problem2", "This is another problem"))
     Sessions["2"].messages.append({"role": "system", "content": prompt})
     Sessions["2"].state = SessionState.AwaitingUserResponse
 
     Users[0].currentSessionId = "1"
 
-    uvicorn.run(app, host="localhost", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
