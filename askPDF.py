@@ -79,9 +79,9 @@ def get_answer_and_id(prompt):
 
     answer = response.choices[0].message.content.strip()
     try:
-        segment_id = int(re.search(r'\(ID: (\d+)\)', answer).group(1))
-        answer = re.sub(r'\(ID: \d+\)', '', answer).strip()
-    except AttributeError:
+        segment_id = int(re.search(r'\<ID: (\d)+\>', answer).group(1))
+        answer = re.sub(r'\<ID: \d+\>', '', answer).strip()
+    except Exception:
         segment_id = None
     return answer, segment_id
 
@@ -93,14 +93,24 @@ class HandoutAssistant:
         self.pdf_path = "./TruLaser-2030-Pre-Install-Manual.pdf"
         self.embedder = OpenAIEmbeddings()
         self.pdf_name = "".join([s for s in self.pdf_path if s.isalnum()])
-        self.questions_data = self.process_pdf()
+
+        if os.path.exists("questionData" + self.pdf_name):
+            with open("questionData" + self.pdf_name, "rb") as f:
+                self.question_data = pickle.load(f)
+        else:
+            print("RELOADING QUESTION DATA")
+            self.question_data = self.process_pdf()
+            with open("questionData" + self.pdf_name, "w+b") as f:
+                pickle.dump(self.question_data, f)
+
         if os.path.exists("faiis" + self.pdf_name):
             local_index = FAISS.load_local("faiis" + self.pdf_name, self.embedder, allow_dangerous_deserialization=True)
             self.faiss_index = local_index
         else:
             # Build the FAISS index (vector store)
             print("INDEXING NEW FILE")
-            self.faiss_index = self.build_faiss_index(self.questions_data)
+
+            self.faiss_index = self.build_faiss_index(self.question_data)
             self.faiss_index.save_local(folder_path="faiis" + self.pdf_name)
 
     def process_pdf(self):
@@ -126,21 +136,21 @@ class HandoutAssistant:
 #           print(f"Element ID: {segment['id']}, Page Number: {segment['page_number']}")
         return segmented_text
 
-    def build_faiss_index(self, questions_data):
+    def build_faiss_index(self, question_data):
         documents = [Document(page_content=q_data["segmentText"],
                               metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in
-                     questions_data]
+                     question_data]
         vector_store = FAISS.from_documents(documents, self.embedder)
         return vector_store
 
-    def get_relevant_segments(self, questions_data, user_question, faiss_index):
+    def get_relevant_segments(self, question_data, user_question, faiss_index):
         retriever = faiss_index.as_retriever()
         retriever.search_kwargs = {"k": 5}
         docs = retriever.get_relevant_documents(user_question)
         relevant_segments = []
         for doc in docs:
             segment_id = doc.metadata["id"]
-            segment = next((segment for segment in questions_data if segment["id"] == segment_id), None)
+            segment = next((segment for segment in question_data if segment["id"] == segment_id), None)
             if segment:
                 relevant_segments.append({
                     "id": segment["id"],
@@ -171,7 +181,7 @@ class HandoutAssistant:
 
     def get_answer(self, question):
         # Use the retriever to search for the most relevant segments
-        relevant_segments = self.get_relevant_segments(self.questions_data, question, self.faiss_index)
+        relevant_segments = self.get_relevant_segments(self.question_data, question, self.faiss_index)
 
         if not relevant_segments:
             return "I couldn't find enough relevant information to answer your question.", None, None, None
@@ -183,7 +193,7 @@ class HandoutAssistant:
             segment_data = next((seg for seg in relevant_segments if seg["id"] == segment_id), None)
             segment_text = segment_data["segment_text"] if segment_data else None
             page_number = next(
-                (segment["page_number"] for segment in self.questions_data if segment["id"] == segment_id), None)
+                (segment["page_number"] for segment in self.question_data if segment["id"] == segment_id), None)
         else:
             page_number = None
             segment_text = None
