@@ -95,6 +95,7 @@ class HandoutAssistant:
         self.pdf_path = "./TruLaser-2030-Pre-Install-Manual.pdf"
         self.embedder = OpenAIEmbeddings()
         self.pdf_name = "".join([s for s in self.pdf_path if s.isalnum()])
+
     def process_pdf(self):
         text, page_texts = PDFReader.pdfToText(self.pdf_path)
         text = text[:500]
@@ -153,15 +154,15 @@ class HandoutAssistant:
         Question: {question}
 
         Relevant Segments:"""
-#       print("\n\n")
+        #       print("\n\n")
         for segment in relevant_segments:
             prompt += f'\n{segment["id"]}. "{segment["segment_text"]}"'
 
-#       print(f"Relevant Element ID: {segment['id']}")  # Add this line to print the relevant element IDs
+        #       print(f"Relevant Element ID: {segment['id']}")  # Add this line to print the relevant element IDs
         return prompt
 
     def get_answer(self, question):
-#       self.current_pdf_path = self.pdf_path
+        #       self.current_pdf_path = self.pdf_path
         self.questions_data = self.process_pdf()
         if os.path.exists("faiis" + self.pdf_name):
             local_index = FAISS.load_local("faiis" + self.pdf_name, self.embedder, allow_dangerous_deserialization=True)
@@ -190,6 +191,13 @@ class HandoutAssistant:
             segment_text = None
 
         return answer, segment_id, segment_text, page_number
+
+
+ha = HandoutAssistant()
+
+
+def askQuestion(question: str) -> str:
+    return ha.get_answer(question)
 
 
 if __name__ == "__main__":

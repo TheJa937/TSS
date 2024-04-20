@@ -8,7 +8,7 @@ from fastapi import FastAPI, UploadFile, File
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-
+import askPDF
 
 
 load_dotenv("./env.env")
@@ -243,8 +243,12 @@ def listSessionStates(context, _) -> list[Response]:
     return responses
 
 
-aiFunctions.append(AiFunction("listSessionStates", listSessionStates))
+def parsePDF(_, question) -> str:
+    return askPDF.askQuestion(question)
 
+
+aiFunctions.append(AiFunction("listSessionStates", listSessionStates))
+aiFunctions.append(AiFunction("parsePDF", parsePDF))
 
 def parseAiFunction(call: str, context):
     """

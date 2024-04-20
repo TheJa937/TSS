@@ -13,6 +13,9 @@ Act nice
 User: What is the state of my problem?
 Answer:listSessionStates()
 
+User: {any question regarding the safety of a laser}
+Answer: parsePDF({question})
+
 User: What is the state of my machine?
 Answer:listSessionStates()
 
