@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import os
 import uuid
@@ -32,6 +33,15 @@ with open("prompt", "r") as f:
     prompt = f.read()
 
 ADMIN_PASSWORD = "apfel"
+
+
+class EnhancedJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if dataclasses.is_dataclass(o):
+            return dataclasses.asdict(o)
+        if isinstance(o, Enum):
+            return o.value
+        return super().default(o)
 
 
 class MachineStatus(Enum):
@@ -156,7 +166,6 @@ class Machine:
 
     def __str__(self):
         return self.name
-
 
 
 @dataclass
@@ -313,8 +322,8 @@ def recapSession(context, arg) -> list[Response]:
     messages = messages[max(len(messages) - 5, 1):]
     newSession = Session(session.username, session.id, session.machine.name, session.problem)
     newSession.messages = messages
-    prompt = json.dumps(newSession.__dict__)
-    prompt += "Please recap this session of a user asking for help in a concise way"
+    prompt = json.dumps(newSession, cls=EnhancedJSONEncoder)
+    prompt += "Please recap this session of a user asking for help in a concise way. Speak to the user"
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "system", "content": prompt}]
