@@ -379,9 +379,9 @@ def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str
     return {"error": "Invalid session id"}
 
 @app.get("/allActiveSessions")
-def getCurrentSession(adminPassword: str) -> List[Session] | dict[str, str]:
+def getCurrentSession(adminPassword: str) -> dict[str, Session] | dict[str, str]:
     if adminPassword == ADMIN_PASSWORD:
-        return Sessions.values
+        return Sessions
     return {"error": "Invalid Admin Password"}
 
 
