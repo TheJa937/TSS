@@ -19,6 +19,7 @@ client = OpenAI(
 with open("prompt", "r") as f:
     prompt = f.read()
 
+ADMIN_PASSWORD = "apfel"
 
 class MachineStatus(Enum):
     RED = "RED"
@@ -376,6 +377,12 @@ def getCurrentSession(username: str, authMethod: str, arg) -> Session:
         session = Sessions[session_id]
         return session
     return {"error": "Invalid session id"}
+
+@app.get("/allActiveSessions")
+def getCurrentSession(adminPassword: str) -> List[Session]:
+    if adminPassword == ADMIN_PASSWORD:
+        return Sessions.values
+    return {"error": "Invalid Admin Password"}
 
 
 if __name__ == "__main__":
