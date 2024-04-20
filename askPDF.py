@@ -93,6 +93,15 @@ class HandoutAssistant:
         self.pdf_path = "./TruLaser-2030-Pre-Install-Manual.pdf"
         self.embedder = OpenAIEmbeddings()
         self.pdf_name = "".join([s for s in self.pdf_path if s.isalnum()])
+        self.questions_data = self.process_pdf()
+        if os.path.exists("faiis" + self.pdf_name):
+            local_index = FAISS.load_local("faiis" + self.pdf_name, self.embedder, allow_dangerous_deserialization=True)
+            self.faiss_index = local_index
+        else:
+            # Build the FAISS index (vector store)
+            print("INDEXING NEW FILE")
+            self.faiss_index = self.build_faiss_index(self.questions_data)
+            self.faiss_index.save_local(folder_path="faiis" + self.pdf_name)
 
     def process_pdf(self):
         text, page_texts = PDFReader.pdfToText(self.pdf_path)
@@ -114,7 +123,7 @@ class HandoutAssistant:
                     max_overlap = overlap
                     max_overlap_page_number = page_text["page_number"]
             segment["page_number"] = max_overlap_page_number + 1
-            print(f"Element ID: {segment['id']}, Page Number: {segment['page_number']}")
+#           print(f"Element ID: {segment['id']}, Page Number: {segment['page_number']}")
         return segmented_text
 
     def build_faiss_index(self, questions_data):
@@ -143,6 +152,7 @@ class HandoutAssistant:
                 print(f"Element ID: {segment['id']}, Score: {doc.metadata.get('score', None)}")
 
         relevant_segments.sort(key=lambda x: x["score"] if x["score"] is not None else float('-inf'), reverse=True)
+        print("most relevant segment: ", relevant_segments[0])
         return relevant_segments
 
     def generate_prompt(self, question, relevant_segments):
@@ -162,16 +172,6 @@ class HandoutAssistant:
         return prompt
 
     def get_answer(self, question):
-        #       self.current_pdf_path = self.pdf_path
-        self.questions_data = self.process_pdf()
-        if os.path.exists("faiis" + self.pdf_name):
-            local_index = FAISS.load_local("faiis" + self.pdf_name, self.embedder, allow_dangerous_deserialization=True)
-            self.faiss_index = local_index
-        else:
-            # Build the FAISS index (vector store)
-            print("INDEXING NEW FILE")
-            self.faiss_index = self.build_faiss_index(self.questions_data)
-            self.faiss_index.save_local(folder_path="faiis" + self.pdf_name)
         # Use the retriever to search for the most relevant segments
         relevant_segments = self.get_relevant_segments(self.questions_data, question, self.faiss_index)
 

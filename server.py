@@ -1,5 +1,7 @@
+import json
 import os
 import uuid
+from datetime import datetime
 from typing import Dict, List, Any, Callable
 from openai import OpenAI
 from enum import Enum
@@ -119,9 +121,9 @@ class SessionState(Enum):
     Closed = "Closed"
 
     def __str__(self):
-        emojies = {self.WaitingForServicetechnician: "🟡",
-                   self.AwaitingUserResponse: "🔵",
-                   self.PleaseScheduleService: "🔴"}
+        emojies = {self.WaitingForServicetechnician: " 🟡",
+                   self.AwaitingUserResponse: " 🔵",
+                   self.PleaseScheduleService: " 🔴"}
         return self.value + emojies.get(self, "")
 
 
@@ -144,12 +146,17 @@ class Session:
     state: SessionState = SessionState.WaitingForServicetechnician
     messages: List[dict[str, str]] = field(default_factory=list)
     files: List[str] = field(default_factory=list)
+    sessionDate: str = None
 
 
 @dataclass()
 class Machine:
     name: str
     status: MachineStatus = MachineStatus.GREEN
+
+    def __str__(self):
+        return self.name
+
 
 
 @dataclass
@@ -162,7 +169,8 @@ NAME = "Henrik"
 NUMBER = "4916095848582"
 Sessions = {}
 closedSessions = {}
-Machines = {"machine1": Machine("machine1"), "machine2": Machine("machine2"), "machine3": Machine("machine3")}
+Machines = {"TruDisk": Machine("TruDisk"), "TruMicro Series 7000": Machine("TruMicro Series 7000"),
+            "TruLaser Cell 3000": Machine("TruLaser Cell 3000")}
 Users = [User(NAME, NUMBER, "Henrik@johnsmail")]
 Users[0].addPhonePort()
 Users[0].addTestPort()
@@ -200,6 +208,12 @@ def authenticateUser(username: str, method: str, arg: Any):
         if user.name == username:
             return user.authenticate(method, arg)
     return False
+
+
+def userbyName(username: str):
+    for user in Users:
+        if user.name == username:
+            return user
 
 
 @dataclass
@@ -243,7 +257,11 @@ def listSessionStates(context, _) -> list[Response]:
     i = 1
     for session in Sessions.values():
         if session.username == context["user"].name:
-            response = Response(f"{session.machine.name}: {session.state}", {Specials.Button: True})
+            if session.sessionDate is None:
+                response = Response(f"{session.machine.name}: {session.state}", {Specials.Button.value: True})
+            else:
+                response = Response(f"{session.machine.name}: {session.state} booked at {session.sessionDate}",
+                                    {Specials.Button.value: True})
             responses.append(response)
             i += 1
     return responses
@@ -255,22 +273,71 @@ def parsePDF(_, question) -> list[Response]:
     a = askPDF.askQuestion(question)
     for i in range(0, len(a), 2):
         text = a[i]
-        source = a[i+1]
+        source = a[i + 1]
         if text is None:
             continue
         if source is None:
             responses.append(Response(text, {}))
             continue
         else:
-            responses.append(Response(text, {Specials.Source: source}))
-    return responses
+            responses.append(Response(text, {Specials.Source.value: source}))
+    print(responses[0])
+    return [responses[0]]
+
+
+def bookServiceDate(context, arg) -> list[Response]:
+    if context["session"].state != SessionState.PleaseScheduleService:
+        return [Response(f"The Session cant book a service date at the moment", {})]
+    context["session"].state = SessionState.WaitingForServicetechnician
+    context["session"].sessionDate = arg
+    return [Response(f"Booked service on {arg}", {})]
+
+
+def createSession(context, arg) -> list[Response]:
+    global Sessions
+    machine, problemTitle, problem = arg.split(",")
+    if machine not in Machines:
+        return [Response("Machine not found", {})]
+    session_id = str(uuid.uuid4())
+    user: User = context["user"]
+    Sessions[session_id] = Session(user.name, session_id, Machines[machine], Problem(problemTitle, problem))
+    Sessions[session_id].messages.append({"role": "system", "content": prompt})
+
+    user.currentSessionId = session_id
+    return [Response(f"I created a new problem Session for you. Do you need further help?", {})]
+
+
+def recapSession(context, arg) -> list[Response]:
+    session = context["session"]
+    messages = context["session"].messages
+    messages = messages[max(len(messages) - 5, 1):]
+    newSession = Session(session.username, session.id, session.machine.name, session.problem)
+    newSession.messages = messages
+    prompt = json.dumps(newSession.__dict__)
+    prompt += "Please recap this session of a user asking for help in a concise way"
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "system", "content": prompt}]
+    )
+    return [Response(response.choices[0].message.content, {})]
 
 
 aiFunctions.append(AiFunction("listSessionStates", listSessionStates))
 aiFunctions.append(AiFunction("parsePDF", parsePDF))
+aiFunctions.append(AiFunction("setServiceDate", bookServiceDate))
+aiFunctions.append(AiFunction("createSession", createSession))
+aiFunctions.append(AiFunction("recapSession", recapSession))
 
 
-def parseAiFunction(call: str, context):
+def trySwitchCurrentSession(sess: str, user: User) -> bool:
+    """Returns if the input has been recognized"""
+    if sess in ("1", "2", "3"):
+        user.currentSessionId = getUsersCurrentSession(user.name)[int(sess) - 1]
+        return True
+    return False
+
+
+def parseAiFunction(call: str, context) -> list[Response]:
     """
     Parse AI function call.
 
@@ -280,6 +347,7 @@ def parseAiFunction(call: str, context):
     Returns:
         Any: Result of the AI function call.
     """
+    print(call)
     if len(call.split("(")) != 2:
         return [Response(call, {})]
     functionName, arg = call.split("(")
@@ -287,6 +355,7 @@ def parseAiFunction(call: str, context):
     for function in aiFunctions:
         if function.name == functionName:
             return function.function(context, arg)
+    return [Response("Backend hurt itself in confusion input was:" + call, {})]
 
 
 @app.get("/")
@@ -398,11 +467,13 @@ async def sendMessage(username: str, message: str, authMethod: str, arg: str) ->
     """
     if not authenticateUser(username, authMethod, arg):
         return {"error": "Invalid credentials"}
+    if trySwitchCurrentSession(message, userbyName(username)):
+        return {"message": [Response("Successfully switched Session", {})]}
     sessionId = getUsersCurrentSession(username)
     if sessionId in Sessions:
         session = Sessions[sessionId]
         session.messages.append({"role": "user", "content": message})
-        context = {"user": Users[0]}
+        context = {"user": Users[0], "session": session}
         response = parseAiFunction(await generate_response(session.messages), context)
         return {"message": response}
     return {"error": "Invalid session id"}
@@ -467,21 +538,22 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
                 f.write(file.file.read())
             session.files.append(file_path)
         except Exception as e:
-            return [Response(str(e), {})]
+            return {"message": [Response(str(e), {})]}
         finally:
             file.file.close()
-            return [Response("File saved successfully", {})]
+            return {"message": [Response("File saved successfully", {})]}
     else:
         file.file.close()
-        return [Response("user has no active Session", {})]
+        return {"message": [Response("user has no active Session", {})]}
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    Sessions["1"] = Session(NAME, "1", Machines["machine1"], Problem("Problem1", "This is a problem"))
+    Sessions["1"] = Session(NAME, "1", Machines["TruDisk"], Problem("Problem1", "This is a problem"))
     Sessions["1"].messages.append({"role": "system", "content": prompt})
-    Sessions["2"] = Session(NAME, "2", Machines["machine2"], Problem("Problem2", "This is another problem"))
+    Sessions["1"].state = SessionState.PleaseScheduleService
+    Sessions["2"] = Session(NAME, "2", Machines["TruLaser Cell 3000"], Problem("Problem2", "This is another problem"))
     Sessions["2"].messages.append({"role": "system", "content": prompt})
     Sessions["2"].state = SessionState.AwaitingUserResponse
 
