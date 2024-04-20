@@ -111,6 +111,30 @@ class HandoutAssistant:
         documents = [Document(page_content=q_data["segmentText"], metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in questions_data]
         vector_store = langchain.FAISS.from_documents(documents, self.embedder)
         return vector_store
+    
+    def get_relevant_segments(self, questions_data, user_question, faiss_index):
+        retriever = faiss_index.as_retriever()
+
+        retriever.search_kwargs = {"k": 5}
+
+        docs = retriever.get_relevant_documents(user_question)
+        relevant_segments = []
+        for doc in docs:
+            segment_id = doc.metadata["id"]
+            segment = next((segment for segment in questions_data if segment["id"] == segment_id), None)
+            if segment:
+                relevant_segments.append({
+                    "id": segment["id"],
+                    "segment_text": segment["segmentText"],
+                    "score": doc.metadata.get("score", None),
+                    "page_number": segment["page_number"]
+                })
+                # print the score and the element ID
+                print(f"Element ID: {segment['id']}, Score: {doc.metadata.get('score', None)}")
+
+        relevant_segments.sort(key=lambda x: x["score"] if x["score"] is not None else float('-inf'), reverse=True)
+
+        return relevant_segments
 
 def generate_response(messages: List[Dict[str, str]]) -> str:
     """
