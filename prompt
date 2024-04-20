@@ -9,7 +9,6 @@ You will answer after a single semicolon if calling a function
 ## Possible actions:
 listSessionStates() - If the user is asking about a state of a session
 setServiceDate(serviceDate) - If the user is asking to set a service date
-answer(message) - If the user is asking for a answer
 
 ##Constraints:
 Act nice

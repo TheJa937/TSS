@@ -43,7 +43,7 @@ class PDFReader:
             text += page_text
             page_texts.append({"text": page_text, "page_number": page.number})
         return text, page_texts
-    
+
     @staticmethod
     def highlight_text(input_pdf, output_pdf, text_to_highlight):
         phrases = text_to_highlight.split('\n')
@@ -56,7 +56,7 @@ class PDFReader:
                             highlight = page.add_highlight_annot(area)
                             highlight.update()
             doc.save(output_pdf)
-    
+
 class AI21PDFHandler:
     @staticmethod
     def segment_text(text):
@@ -89,7 +89,7 @@ class HandoutAssistant:
         segmented_text = AI21PDFHandler.segment_text(text)
         question_data = self.assign_page_numbers_to_pages(segmented_text, page_texts)
         return question_data
-    
+
     def assign_page_numbers_to_pages(self, segmented_text, page_texts):
         for idx, segment in enumerate(segmented_text):
             segment_text = segment["segmentText"]
@@ -177,6 +177,19 @@ class User:
         return False
 
 
+class SessionState(Enum):
+    WaitingForServicetechnician = "Waiting for Servicetechnician"
+    AwaitingUserResponse = "Awaiting user response"
+    PleaseScheduleService = "Please schedule service"
+    Closed = "Closed"
+
+    def __str__(self):
+        emojies = {self.WaitingForServicetechnician: "🟡",
+                   self.AwaitingUserResponse: "🔵",
+                   self.PleaseScheduleService: "🔴"}
+        return self.value + emojies.get(self, "")
+
+
 @dataclass
 class Session:
     """
@@ -193,7 +206,9 @@ class Session:
     id: str
     machine: "Machine"
     problem: "Problem"
+    state: SessionState = SessionState.WaitingForServicetechnician
     messages: List[dict[str, str]] = field(default_factory=list)
+
 
 @dataclass()
 class Machine:
@@ -209,11 +224,10 @@ class Problem:
 
 Sessions = {}
 closedSessions = {}
-Machines = {"machine1": Machine("machine1")}
+Machines = {"machine1": Machine("machine1"), "machine2": Machine("machine2"), "machine3": Machine("machine3")}
 Users = [User("John", "1234567890", "john@johnsmail")]
 Users[0].addPhonePort()
-Sessions["123"] = Session("123", "John", Machines["machine1"], Problem("Problem1", "This is a problem"))
-Sessions["123"].messages.append({"role": "system", "content": prompt})
+
 
 
 def getUsersCurrentSession(username: str):
@@ -266,7 +280,15 @@ class AiFunction:
 aiFunctions = []
 
 
-def listSessionStates(_):
+class Specials(Enum):
+    Button = "Button"
+@dataclass
+class Response:
+    message: str
+    specials: {str: str}
+
+
+def listSessionStates(context, _) -> list[Response]:
     """
     List session states.
 
@@ -276,13 +298,20 @@ def listSessionStates(_):
     Returns:
         dict[str, str]: Session states.
     """
-    return {session.machine.name: session.machine.status.name for session in Sessions.values()}
+    responses = []
+    i = 1
+    for session in Sessions.values():
+        if session.username == context["user"].name:
+            response = Response(f"{session.machine.name}: {session.state}", {Specials.Button: f"Switch to {i}"})
+            responses.append(response)
+            i += 1
+    return responses
 
 
 aiFunctions.append(AiFunction("listSessionStates", listSessionStates))
 
 
-def parseAiFunction(call: str):
+def parseAiFunction(call: str, context):
     """
     Parse AI function call.
 
@@ -292,14 +321,13 @@ def parseAiFunction(call: str):
     Returns:
         Any: Result of the AI function call.
     """
-    try:
-        functionName, arg = call.split("(")
-        arg = arg[:-1]
-        for function in aiFunctions:
-            if function.name == functionName:
-                return function.function(arg)
-    except:
+    if len(call.split("(")) != 2:
         return call
+    functionName, arg = call.split("(")
+    arg = arg[:-1]
+    for function in aiFunctions:
+        if function.name == functionName:
+            return function.function(context, arg)
 
 
 @app.get("/")
@@ -373,6 +401,8 @@ def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list[Sessi
     for user in Users:
         if user.name == username:
             if user.authenticate(authMethod, arg):
+                for session in Sessions.values():
+                    print(session)
                 return {"sessions": [session for session in Sessions.values() if session.username == username]}
     return {"error": "Invalid credentials"}
 
@@ -395,7 +425,7 @@ def closeSession(session_id: str) -> dict[str, str]:
 
 
 @app.post("/sendMessage")
-def sendMessage(username: str, message: str, authMethod: str, arg) -> dict[str, str] | dict[str, dict]:
+def sendMessage(username: str, message: str, authMethod: str, arg: str) -> dict[str, str] | dict[str, list[Any]]:
     """
     Send a message.
 
@@ -412,7 +442,8 @@ def sendMessage(username: str, message: str, authMethod: str, arg) -> dict[str, 
     if sessionId in Sessions:
         session = Sessions[sessionId]
         session.messages.append({"role": "user", "content": message})
-        response = parseAiFunction(generate_response(session.messages))
+        context = {"user": Users[0]}
+        response = parseAiFunction(generate_response(session.messages), context)
         return {"message": response}
     return {"error": "Invalid session id"}
 
@@ -475,6 +506,14 @@ async def uploadfile(file: UploadFile):
 
 if __name__ == "__main__":
     import uvicorn
+
+    Sessions["1"] = Session("John", "1", Machines["machine1"], Problem("Problem1", "This is a problem"))
+    Sessions["1"].messages.append({"role": "system", "content": prompt})
+    Sessions["2"] = Session("John", "2", Machines["machine2"], Problem("Problem2", "This is another problem"))
+    Sessions["2"].messages.append({"role": "system", "content": prompt})
+    Sessions["2"].state = SessionState.AwaitingUserResponse
+
+    Users[0].currentSessionId = "1"
 
     pdf_path = "TRUMPF_TruBend_Brochure.pdf"
     uvicorn.run(app, host="localhost", port=8000)
