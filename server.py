@@ -16,6 +16,9 @@ client = OpenAI(
     api_key=apiKey
 )
 
+with open("prompt", "r") as f:
+    prompt = f.read()
+
 
 class MachineStatus(Enum):
     RED = "RED"
@@ -24,6 +27,7 @@ class MachineStatus(Enum):
 
 
 def generate_response(messages: List[Dict[str, str]]) -> str:
+    print(messages)
     completion = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=messages
@@ -43,6 +47,7 @@ class User:
     phoneNumber: str
     email: str
     Userports: list[Userport] = field(default_factory=list)
+    currentSessionId: str = ""
 
     def addPhonePort(self):
         self.Userports.append(Userport("Phone", lambda number: self.phoneNumber == number))
@@ -87,9 +92,41 @@ closedSessions = {}
 Machines = {"machine1": Machine("machine1")}
 Users = [User("John", "1234567890", "john@johnsmail")]
 Users[0].addPhonePort()
+Sessions["123"] = Session("123", "John", Machines["machine1"], Problem("Problem1", "This is a problem"))
+Sessions["123"].messages.append({"role": "system", "content": prompt})
 
-with open("prompt", "r") as f:
-    prompt = f.read()
+
+def getUsersCurrentSession(username: str):
+    for user in Users:
+        if user.name == username:
+            return user.currentSessionId
+    return None
+
+@dataclass
+class AiFunction:
+    name: str
+    function: "Function"
+
+
+aiFunctions = []
+
+
+def listSessionStates(_):
+    return {session.machine.name: session.machine.status.name for session in Sessions.values()}
+aiFunctions.append(AiFunction("listSessionStates", listSessionStates))
+
+
+def parseAiFunction(call: str):
+    try:
+        print(call)
+        functionName, arg = call.split("(")
+        arg = arg[:-1]
+        for function in aiFunctions:
+            if function.name == functionName:
+                return function.function(arg)
+    except:
+        print("abort")
+        return call
 
 
 @app.get("/")
@@ -116,6 +153,7 @@ def createProblemSession(username: str, problem: Problem, machineName: str, auth
                 session_id = str(uuid.uuid4())
                 Sessions[session_id] = Session(session_id, username, Machines[machineName], problem)
                 Sessions[session_id].messages.append({"role": "system", "content": prompt})
+                user.currentSessionId = session_id
                 return {"session_id": session_id}
     return {"error": "Invalid credentials"}
 
@@ -138,24 +176,27 @@ def closeSession(session_id: str) -> dict[str, str]:
 
 
 @app.post("/sendMessage")
-def sendMessage(session_id: str, message: str) -> dict[str, str]:
-    if session_id in Sessions:
-        Sessions[session_id].messages.append({"role": "user", "content": message})
-        response = generate_response(Sessions[session_id].messages)
-        print(response)
+def sendMessage(username: str, message: str) -> dict[str, str] | dict[str, dict]:
+    sessionId = getUsersCurrentSession(username)
+    if sessionId in Sessions:
+        session = Sessions[sessionId]
+        session.messages.append({"role": "user", "content": message})
+        response = parseAiFunction(generate_response(session.messages))
         return {"message": response}
     return {"error": "Invalid session id"}
 
 
 @app.get("/getMessages")
-def getMessages(session_id: str) -> dict[str, Session] | dict[str, str]:
+def getMessages(username: str) -> dict[str, Session] | dict[str, str]:
+    session_id = getUsersCurrentSession(username)
     if session_id in Sessions:
         return {"messages": Sessions[session_id].messages}
     return {"error": "Invalid session id"}
 
 
-@app.get("/getSession")
-def getSession(session_id: str) -> Session:
+@app.get("/getCurrentSession")
+def getCurrentSession(username: str) -> Session:
+    session_id = getUsersCurrentSession(username)
     if session_id in Sessions:
         session = Sessions[session_id]
         return session
