@@ -466,4 +466,5 @@ def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
 if __name__ == "__main__":
     import uvicorn
 
+    pdf_path = "TRUMPF_TruBend_Brochure.pdf"
     uvicorn.run(app, host="localhost", port=8000)
