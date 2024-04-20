@@ -11,15 +11,25 @@ from dotenv import load_dotenv
 import requests
 import langchain
 from langchain.docstore.document import Document
-
+from starlette.middleware.cors import CORSMiddleware
 
 load_dotenv("./env.env")
+
+
 
 ai21_apiKey = os.getenv("AI21_API_KEY")
 openai_apiKey = os.getenv("OPENAI_API_KEY")
 app = FastAPI()
 client = OpenAI(
     api_key=openai_apiKey
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins="*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 with open("prompt", "r") as f:
@@ -45,7 +55,7 @@ class PDFReader:
             text += page_text
             page_texts.append({"text": page_text, "page_number": page.number})
         return text, page_texts
-    
+
     @staticmethod
     def highlight_text(input_pdf, output_pdf, text_to_highlight):
         phrases = text_to_highlight.split('\n')
@@ -58,7 +68,8 @@ class PDFReader:
                             highlight = page.add_highlight_annot(area)
                             highlight.update()
             doc.save(output_pdf)
-    
+
+
 class AI21PDFHandler:
     @staticmethod
     def segment_text(text):
@@ -81,6 +92,7 @@ class AI21PDFHandler:
             print(f"An error occurred: {response.status_code}")
             return None
 
+
 class HandoutAssistant:
     def __init__(self) -> None:
         self.current_pdf_path = None
@@ -91,7 +103,7 @@ class HandoutAssistant:
         segmented_text = AI21PDFHandler.segment_text(text)
         question_data = self.assign_page_numbers_to_pages(segmented_text, page_texts)
         return question_data
-    
+
     def assign_page_numbers_to_pages(self, segmented_text, page_texts):
         for idx, segment in enumerate(segmented_text):
             segment_text = segment["segmentText"]
@@ -108,7 +120,9 @@ class HandoutAssistant:
         return segmented_text
 
     def build_faiss_index(self, questions_data):
-        documents = [Document(page_content=q_data["segmentText"], metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in questions_data]
+        documents = [Document(page_content=q_data["segmentText"],
+                              metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in
+                     questions_data]
         vector_store = langchain.FAISS.from_documents(documents, self.embedder)
         return vector_store
     
@@ -136,7 +150,8 @@ class HandoutAssistant:
 
         return relevant_segments
 
-def generate_response(messages: List[Dict[str, str]]) -> str:
+
+async def generate_response(messages: List[Dict[str, str]]) -> str:
     """
     Generate AI response based on the conversation history.
 
@@ -253,13 +268,13 @@ class Problem:
     name: str
     description: str
 
-
+NAME = "Henrik"
+NUMBER = "4916095848582"
 Sessions = {}
 closedSessions = {}
 Machines = {"machine1": Machine("machine1"), "machine2": Machine("machine2"), "machine3": Machine("machine3")}
-Users = [User("John", "1234567890", "john@johnsmail")]
+Users = [User(NAME, NUMBER, "Henrik@johnsmail")]
 Users[0].addPhonePort()
-
 
 
 def getUsersCurrentSession(username: str):
@@ -314,6 +329,8 @@ aiFunctions = []
 
 class Specials(Enum):
     Button = "Button"
+
+
 @dataclass
 class Response:
     message: str
@@ -354,7 +371,7 @@ def parseAiFunction(call: str, context):
         Any: Result of the AI function call.
     """
     if len(call.split("(")) != 2:
-        return call
+        return [Response(call, {})]
     functionName, arg = call.split("(")
     arg = arg[:-1]
     for function in aiFunctions:
@@ -363,7 +380,7 @@ def parseAiFunction(call: str, context):
 
 
 @app.get("/")
-def test():
+async def test():
     """
     Test API endpoint.
     """
@@ -371,7 +388,7 @@ def test():
 
 
 @app.post("/setMachineStatus")
-def setMachineStatus(session_id: str, status: str) -> dict[str, str]:
+async def setMachineStatus(session_id: str, status: str) -> dict[str, str]:
     """
     Set machine status.
 
@@ -392,7 +409,8 @@ def setMachineStatus(session_id: str, status: str) -> dict[str, str]:
 
 
 @app.post("/createProblemSession")
-def createProblemSession(username: str, problem: "Problem", machineName: str, authMethod: str, arg) -> dict[str, str]:
+async def createProblemSession(username: str, problem: "Problem", machineName: str, authMethod: str, arg) -> dict[
+    str, str]:
     """
     Create a problem session.
 
@@ -418,7 +436,7 @@ def createProblemSession(username: str, problem: "Problem", machineName: str, au
 
 
 @app.get("/getUserSessions")
-def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list[Session]] | dict[str, str]:
+async def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list[Session]] | dict[str, str]:
     """
     Get user sessions.
 
@@ -440,7 +458,7 @@ def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list[Sessi
 
 
 @app.post("/closeSession")
-def closeSession(session_id: str) -> dict[str, str]:
+async def closeSession(session_id: str) -> dict[str, str]:
     """
     Close a session.
 
@@ -457,7 +475,7 @@ def closeSession(session_id: str) -> dict[str, str]:
 
 
 @app.post("/sendMessage")
-def sendMessage(username: str, message: str, authMethod: str, arg: str) -> dict[str, str] | dict[str, list[Any]]:
+async def sendMessage(username: str, message: str, authMethod: str, arg: str) -> dict[str, str] | dict[str, list[Any]]:
     """
     Send a message.
 
@@ -475,13 +493,13 @@ def sendMessage(username: str, message: str, authMethod: str, arg: str) -> dict[
         session = Sessions[sessionId]
         session.messages.append({"role": "user", "content": message})
         context = {"user": Users[0]}
-        response = parseAiFunction(generate_response(session.messages), context)
+        response = parseAiFunction(await generate_response(session.messages), context)
         return {"message": response}
     return {"error": "Invalid session id"}
 
 
 @app.get("/getMessages")
-def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dict[str, str]:
+async def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dict[str, str]:
     """
     Get messages.
 
@@ -500,7 +518,7 @@ def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dic
 
 
 @app.get("/getCurrentSession")
-def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str, str]:
+async def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str, str]:
     """
     Get current session.
 
@@ -518,8 +536,9 @@ def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str
         return session
     return {"error": "Invalid session id"}
 
+
 @app.post("/askPDF")
-def askPDF(questionData: str) -> str :
+def askPDF(questionData: str) -> str:
     pdf_path = "UploadedFiles/TRUMPF_TruBend_Brochure.pdf"
     handout_assistant = HandoutAssistant()
 
@@ -553,12 +572,12 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
 if __name__ == "__main__":
     import uvicorn
 
-    Sessions["1"] = Session("John", "1", Machines["machine1"], Problem("Problem1", "This is a problem"))
+    Sessions["1"] = Session(NAME, "1", Machines["machine1"], Problem("Problem1", "This is a problem"))
     Sessions["1"].messages.append({"role": "system", "content": prompt})
-    Sessions["2"] = Session("John", "2", Machines["machine2"], Problem("Problem2", "This is another problem"))
+    Sessions["2"] = Session(NAME, "2", Machines["machine2"], Problem("Problem2", "This is another problem"))
     Sessions["2"].messages.append({"role": "system", "content": prompt})
     Sessions["2"].state = SessionState.AwaitingUserResponse
 
     Users[0].currentSessionId = "1"
 
-    uvicorn.run(app, host="localhost", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
