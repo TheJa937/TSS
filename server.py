@@ -45,7 +45,7 @@ class PDFReader:
             text += page_text
             page_texts.append({"text": page_text, "page_number": page.number})
         return text, page_texts
-
+    
     @staticmethod
     def highlight_text(input_pdf, output_pdf, text_to_highlight):
         phrases = text_to_highlight.split('\n')
@@ -58,7 +58,7 @@ class PDFReader:
                             highlight = page.add_highlight_annot(area)
                             highlight.update()
             doc.save(output_pdf)
-
+    
 class AI21PDFHandler:
     @staticmethod
     def segment_text(text):
@@ -91,7 +91,7 @@ class HandoutAssistant:
         segmented_text = AI21PDFHandler.segment_text(text)
         question_data = self.assign_page_numbers_to_pages(segmented_text, page_texts)
         return question_data
-
+    
     def assign_page_numbers_to_pages(self, segmented_text, page_texts):
         for idx, segment in enumerate(segmented_text):
             segment_text = segment["segmentText"]
@@ -106,14 +106,10 @@ class HandoutAssistant:
             segment["page_number"] = max_overlap_page_number + 1
             print(f"Element ID: {segment['id']}, Page Number: {segment['page_number']}")
         return segmented_text
-    
+
     def build_faiss_index(self, questions_data):
-        # Convert questions_data to a list of Documents
         documents = [Document(page_content=q_data["segmentText"], metadata={"id": q_data["id"], "page_number": q_data["page_number"]}) for q_data in questions_data]
-
-        # Create the FAISS index (vector store) using the langchain.FAISS.from_documents() method
         vector_store = langchain.FAISS.from_documents(documents, self.embedder)
-
         return vector_store
 
 def generate_response(messages: List[Dict[str, str]]) -> str:
@@ -523,8 +519,6 @@ async def uploadfile(file: UploadFile):
 if __name__ == "__main__":
     import uvicorn
 
-<<<<<<< HEAD
-=======
     Sessions["1"] = Session("John", "1", Machines["machine1"], Problem("Problem1", "This is a problem"))
     Sessions["1"].messages.append({"role": "system", "content": prompt})
     Sessions["2"] = Session("John", "2", Machines["machine2"], Problem("Problem2", "This is another problem"))
@@ -533,6 +527,4 @@ if __name__ == "__main__":
 
     Users[0].currentSessionId = "1"
 
-    pdf_path = "TRUMPF_TruBend_Brochure.pdf"
->>>>>>> 60104c6e9dc59dbd757b74529fd8fbc66a2ceb86
     uvicorn.run(app, host="localhost", port=8000)
