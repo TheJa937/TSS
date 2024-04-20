@@ -37,9 +37,6 @@ class MachineStatus(Enum):
     YELLOW = "YELLOW"
     GREEN = "GREEN"
 
-def generate_response(messages: List[Dict[str, str]]) -> str:
-
-
 async def generate_response(messages: List[Dict[str, str]]) -> str:
     """
     Generate AI response based on the conversation history.
