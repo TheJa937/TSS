@@ -212,7 +212,6 @@ def askQuestion(question: str) -> tuple[str, None, None, None] | tuple[str, Any 
 
 
 if __name__ == "__main__":
-    ha = HandoutAssistant()
     print("HI")
     while True:
         print(ha.get_answer(input()))
