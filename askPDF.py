@@ -79,8 +79,9 @@ def get_answer_and_id(prompt):
 
     answer = response.choices[0].message.content.strip()
     try:
-        segment_id = int(re.search(r'\<ID: (\d)+\>', answer).group(1))
-        answer = re.sub(r'\<ID: \d+\>', '', answer).strip()
+        segment_id = int(re.search(r'\(ID: (\d)+\)', answer).group(1))
+        while re.search(r'\(ID: \d+\)', answer):
+            answer = re.sub(r'\(ID: \d+\)', '', answer).strip()
     except Exception:
         segment_id = None
     return answer, segment_id
@@ -174,7 +175,7 @@ class HandoutAssistant:
         """
         #       print("\n\n")
         for segment in relevant_segments:
-            prompt += f'\n{segment["id"]}. "{segment["segment_text"]}"'
+            prompt += f'\n{segment["page_number"]}. "{segment["segment_text"]}"'
 
         #       print(f"Relevant Element ID: {segment['id']}")  # Add this line to print the relevant element IDs
         return prompt

@@ -566,7 +566,15 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
 
 @app.get("/image")
 async def getImage(image: str):
-    return FileResponse(image)
+    return FileResponse("UploadedFiles/" + image)
+
+
+@app.post("/askDocumentation")
+async def askDocumentation(username: str, message: str, authMethod: str, arg: str) -> dict[str, str] | dict[
+    str, list[Any]]:
+    if not authenticateUser(username, authMethod, arg):
+        return {"error": "Invalid credentials"}
+    return {"message": parsePDF(None, message)}
 
 
 if __name__ == "__main__":

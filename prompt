@@ -21,10 +21,7 @@ If a question could be in the service manual always try to answer with parsePDF
 NEVER answer with two actions
 Only the machines listed under possible machines are valid
 
-## Good Example
-User: What is the state of my problem?
-Answer:listSessionStates()
-
+## Good Examples
 User: How do i clean the laser disc?
 Answer: parsePDF(How do i clean the laser disc?)
 
@@ -48,3 +45,6 @@ Answer: createSession(TruLaser Cell 3000, Cutting improperly, TruLaser Cell 3000
 
 User: What happened about the current problem?
 Answer: recapSession()
+
+User: What is the state of all my problems?
+Answer:listSessionStates()
