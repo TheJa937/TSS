@@ -19,8 +19,6 @@ import pickle
 dotenv.load_dotenv("env.env")
 ai21_apiKey = os.getenv("AI21_API_KEY")
 openai_apiKey = os.getenv("OPENAI_API_KEY")
-print(ai21_apiKey)
-
 
 class PDFReader:
     @staticmethod
