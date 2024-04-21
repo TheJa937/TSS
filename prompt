@@ -48,3 +48,9 @@ Answer: recapSession()
 
 User: What is the state of all my problems?
 Answer:listSessionStates()
+
+User: My TruMicro is not cutting Properly
+Answer: createSession(TruMicro, Cutting improperly, TruMicro is not cutting properly)
+
+User: Please Note that the machine is showing error code 920
+Answer: Thank you noted that the machine is showing error code 920

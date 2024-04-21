@@ -62,8 +62,8 @@ async def generate_response(messages: List[Dict[str, str]]) -> str:
         str: Generated response from AI model.
     """
     completion = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=messages
+        model="gpt-4-turbo",
+        messages=[messages[0], messages[-1]]
     )
     return completion.choices[0].message.content
 
@@ -580,7 +580,7 @@ async def askDocumentation(username: str, message: str, authMethod: str, arg: st
 if __name__ == "__main__":
     import uvicorn
 
-    Sessions["1"] = Session(NAME, "1", Machines["TruDisk"], Problem("Problem1", "This is a problem"))
+    Sessions["1"] = Session(NAME, "1", Machines["TruMicro Series 7000"], Problem("Problem1", "This is a problem"))
     Sessions["1"].messages.append({"role": "system", "content": prompt})
     Sessions["1"].state = SessionState.PleaseScheduleService
     Sessions["2"] = Session(NAME, "2", Machines["TruLaser Cell 3000"], Problem("Problem2", "This is another problem"))
