@@ -1,4 +1,5 @@
 import re
+from typing import Tuple, Any
 
 import dotenv
 import fitz
@@ -205,7 +206,7 @@ class HandoutAssistant:
 ha = HandoutAssistant()
 
 
-def askQuestion(question: str) -> str:
+def askQuestion(question: str) -> tuple[str, None, None, None] | tuple[str, Any | None, Any | None, int | None]:
     print(question)
     return ha.get_answer(question)
 
