@@ -279,7 +279,6 @@ def listSessionStates(context, _) -> list[Response]:
 
 def parsePDF(_, question) -> list[Response]:
     responses = []
-    print("HERE:")
     a = askPDF.askQuestion(question)
     for i in range(0, len(a), 2):
         text = a[i]
@@ -291,7 +290,6 @@ def parsePDF(_, question) -> list[Response]:
             continue
         else:
             responses.append(Response(text, {Specials.Source.value: source}))
-    print(responses[0])
     return [responses[0]]
 
 
@@ -304,6 +302,7 @@ def bookServiceDate(context, arg) -> list[Response]:
 
 
 def createSession(context, arg) -> list[Response]:
+    """AI Function to create a session called by the controller gpt"""
     global Sessions
     machine, problemTitle, problem = arg.split(",")
     if machine not in Machines:
@@ -327,8 +326,8 @@ def recapSession(context, arg) -> list[Response]:
     messages = messages[max(len(messages) - 5, 1):]
     newSession = Session(session.username, session.id, session.machine.name, session.problem)
     newSession.messages = messages
-    prompt = json.dumps(newSession, cls=EnhancedJSONEncoder)
-    prompt += "Please recap this session of a user asking for help in a concise way. Speak to the user"
+    recapPrompt = json.dumps(newSession, cls=EnhancedJSONEncoder)
+    recapPrompt += "Please recap this session of a user asking for help in a concise way. Speak to the user"
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "system", "content": prompt}]
@@ -344,7 +343,9 @@ aiFunctions.append(AiFunction("recapSession", recapSession))
 
 
 def trySwitchCurrentSession(sess: str, user: User) -> bool:
-    """Returns if the input has been recognized"""
+    """Returns if the input has been recognized.
+    Used because Whatsapp Business does not support variable buttons
+    """
     if sess in ("1", "2", "3"):
         user.currentSessionId = getUsersCurrentSession(user.name)[int(sess) - 1]
         return True
@@ -360,6 +361,7 @@ def parseAiFunction(call: str, context) -> list[Response]:
 
     Returns:
         Any: Result of the AI function call.
+        :param context: dictionary with context such as User and Session
     """
     print(call)
     if len(call.split("(")) != 2:
@@ -437,6 +439,8 @@ async def getUserSessions(username: str, authMethod: str, arg) -> dict[str, list
         username (str): Username.
         authMethod (str): Authentication method.
         arg : Authentication argument.
+        :param arg: Argument for the auth method
+        :param authMethod: Authentication Method name
 
     Returns:
         dict[str, list[Session]] | dict[str, str]: User sessions or error message.
@@ -474,7 +478,9 @@ async def sendMessage(username: str, message: str, authMethod: str, arg: str) ->
 
     Args:
         username (str): Username.
-        message (str): Message content.
+        message (str): Message content
+        :param arg: Argument for the auth method
+        :param authMethod: Authentication Method name.
 
     Returns:
         dict[str, str] | dict[str, dict]: Response message or AI generated response.
@@ -498,13 +504,15 @@ async def sendMessage(username: str, message: str, authMethod: str, arg: str) ->
 @app.get("/getMessages")
 async def getMessages(username: str, authMethod: str, arg) -> dict[str, Session] | dict[str, str]:
     """
-    Get messages.
+    Get messages of the current user session.
 
     Args:
         username (str): Username.
 
     Returns:
         dict[str, Session] | dict[str, str]: Messages or error message.
+        :param arg: Argument for the auth method
+        :param authMethod: Authentication Method name
     """
     if not authenticateUser(username, authMethod, arg):
         return {"error": "Invalid credentials"}
@@ -517,7 +525,7 @@ async def getMessages(username: str, authMethod: str, arg) -> dict[str, Session]
 @app.get("/getCurrentSession")
 async def getCurrentSession(username: str, authMethod: str, arg) -> Session | dict[str, str]:
     """
-    Get current session.
+    Get current session of the user.
 
     Args:
         username (str): Username.
@@ -535,7 +543,7 @@ async def getCurrentSession(username: str, authMethod: str, arg) -> Session | di
 
 
 @app.get("/allActiveSessions")
-def getAllActiveSessions(adminPassword: str) -> List[Session] | dict[str, str]:
+def getAllActiveSessions(adminPassword: str) -> dict[str, Session] | dict[str, str]:
     if adminPassword == ADMIN_PASSWORD:
         return Sessions
     return {"error": "Invalid Admin Password"}
@@ -553,6 +561,7 @@ async def uploadfile(file: UploadFile, username: str, authMethod: str, arg):
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
             session.files.append(file_path)
+            # Indicates a image to chatgpt and the frontends
             session.messages.append({"role": "user", "content": f"<img>{file.filename}"})
         except Exception as e:
             return {"message": [Response(str(e), {})]}
@@ -580,6 +589,7 @@ async def askDocumentation(username: str, message: str, authMethod: str, arg: st
 if __name__ == "__main__":
     import uvicorn
 
+    # Initial Data
     Sessions["1"] = Session(NAME, "1", Machines["TruMicro Series 7000"], Problem("Problem1", "This is a problem"))
     Sessions["1"].messages.append({"role": "system", "content": prompt})
     Sessions["1"].state = SessionState.PleaseScheduleService
